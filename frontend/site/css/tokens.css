@@ -1,0 +1,54 @@
+/* 设计令牌：gb-609 pricelift ——「实验室记录本」。
+   方格纸 + 橄榄绿 + 打字机数字 + 楷体手写批注；曲线是主视觉。
+   规则：oklch() 色板；禁纯黑纯白；双字体（Courier Prime 打字机 + LXGW WenKai TC 手写楷）。 */
+:root {
+  /* 方格纸 */
+  --paper: oklch(0.965 0.013 96);
+  --paper-2: oklch(0.94 0.018 94);
+  --paper-3: oklch(0.905 0.022 92);
+  --note: oklch(0.955 0.045 92);
+  --grid: oklch(0.885 0.03 118 / 0.55);
+  --grid-strong: oklch(0.84 0.045 120 / 0.75);
+
+  /* 墨与尺 */
+  --ink: oklch(0.255 0.022 122);
+  --ink-soft: oklch(0.42 0.02 120);
+  --ink-faint: oklch(0.575 0.018 118);
+  --rule: oklch(0.83 0.025 112);
+  --rule-strong: oklch(0.68 0.04 116);
+
+  /* 橄榄绿主色 */
+  --accent: oklch(0.44 0.085 128);
+  --accent-deep: oklch(0.315 0.055 130);
+  --accent-soft: oklch(0.6 0.075 126);
+  --accent-wash: oklch(0.9 0.05 128);
+  --rail-bg: oklch(0.305 0.045 132);
+  --rail-ink: oklch(0.93 0.025 96);
+  --rail-faint: oklch(0.74 0.03 110);
+
+  --ok: oklch(0.48 0.09 148);
+  --ok-wash: oklch(0.92 0.04 148);
+  --warn: oklch(0.63 0.12 76);
+  --warn-wash: oklch(0.94 0.055 84);
+  --danger: oklch(0.5 0.15 30);
+  --danger-wash: oklch(0.93 0.045 32);
+  --info: oklch(0.5 0.055 232);
+  --info-wash: oklch(0.93 0.025 232);
+
+  --font-display: 'Courier Prime', 'Kaiti SC', 'STKaiti', ui-monospace, monospace;
+  --font-body: 'LXGW WenKai TC', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', serif;
+  --font-mono: 'Courier Prime', 'SFMono-Regular', ui-monospace, monospace;
+
+  --fs-xs: 0.7rem;
+  --fs-sm: 0.8rem;
+  --fs-md: 0.93rem;
+  --fs-lg: 1.14rem;
+  --fs-xl: clamp(1.42rem, 2vw, 2rem);
+  --fs-2xl: clamp(1.9rem, 3.2vw, 3rem);
+
+  --pad: clamp(14px, 1.5vw, 26px);
+  --rail: 214px;
+  --radius: 2px;
+  --shadow: 0 1px 0 oklch(0.84 0.03 110), 0 20px 36px -32px oklch(0.3 0.03 120 / 0.6);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
