@@ -634,6 +634,37 @@ textarea {
   color: var(--danger);
 }
 
+/* 可算性对账：活动 = 可算 + 隔离，原因计数在旁 */
+.recon-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 16px;
+  border-top: 1px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule-strong);
+  padding: 10px 0;
+}
+
+.recon-grid .eyebrow {
+  margin-bottom: 2px;
+}
+
+.recon-grid p {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: var(--accent-deep);
+}
+
+.recon-grid .badge {
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+  .recon-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* 曲线插图 */
 .chart {
   width: 100%;

@@ -17,13 +17,63 @@ import {
   toast,
 } from '../ui.js';
 
-const state = { runId: '', status: '', band: '', q: '' };
+const state = { runId: '', status: '', band: '', q: '', reason: '' };
 
 function reportRow(row) {
   return {
     ...row,
     id: row.id,
   };
+}
+
+function reasonTone(reason) {
+  return {
+    missing_days: 'danger',
+    price_anomaly: 'warn',
+    insufficient_controls: 'info',
+    not_calculable: 'pending',
+  }[reason] || 'info';
+}
+
+function isolationSummary(detail) {
+  const missing = (detail || {}).missing_days || {};
+  const parts = [];
+  if (missing.total) parts.push(`缺 ${missing.total} 天`);
+  if ((detail || {}).price_issues?.length) parts.push(`价格异常 ${detail.price_issues.length} 项`);
+  if ((detail || {}).control_count !== undefined) {
+    parts.push(`对照 ${detail.control_count}/${detail.control_required}`);
+  }
+  return parts.join(' · ') || '—';
+}
+
+function openIsolation(item) {
+  const detail = item.detail || {};
+  const missing = detail.missing_days || {};
+  const missingLines = [];
+  if (missing.treat?.length) missingLines.push(`处理组：${missing.treat.join('、')}`);
+  Object.entries(missing.controls || {}).forEach(([code, days]) => {
+    missingLines.push(`对照 ${code}：${days.join('、')}`);
+  });
+  const checks = (detail.checks || []).length
+    ? `<ul class="mono muted" style="margin:6px 0 0;padding-left:18px">${detail.checks
+        .map((check) => `<li>${esc(check.label)}：${esc(check.note)}</li>`)
+        .join('')}</ul>`
+    : '';
+  drawer({
+    title: `${item.event_no} · ${item.sku_name}`,
+    subtitle: `${item.kind_label || ''} / ${item.channel_label || ''} / ${item.start_on} → ${item.end_on}`,
+    body: `${kv([
+      ['隔离原因', `<span class="badge ${reasonTone(item.reason)}">${esc(item.reason_label || ENUMS.isolationReason[item.reason] || item.reason)}</span>`],
+      ['原因说明', esc(item.note || '—')],
+      ['窗口', `<span class="mono">前窗 ${fmtInt(detail.pre_days)} 天 / 活动窗 ${fmtInt(detail.post_days)} 天</span>`],
+      ['缺日', missingLines.length ? `<span class="mono">${esc(missingLines.join('；'))}</span>` : '无缺日（零销量按真实观测计入）'],
+      ['对照', `<span class="mono">可用 ${fmtInt(detail.control_count)} / 需要 ${fmtInt(detail.control_required)}${detail.excluded_controls?.length ? `；缺日排除 ${esc(detail.excluded_controls.join(' / '))}` : ''}</span>`],
+      ['价格异常', (detail.price_issues || []).length ? esc(detail.price_issues.join('；')) : '无'],
+      ['前窗日均', `<span class="mono">处理组 ${fmtDec(detail.treat_pre_mean, 1)} / 对照组 ${fmtDec(detail.control_pre_mean, 1)} 件</span>`],
+      ['处理方式', '<span class="mono">不进入计算；不参与总览均值；记录保留可查</span>'],
+    ])}${checks}`,
+    footer: `<span class="mono muted">隔离记录随批次留存，可在「导出与口径」下载隔离清单 CSV 对账。</span>`,
+  });
 }
 
 async function openReport(view, ctx, item) {
@@ -104,14 +154,20 @@ export const liftPage = {
     if (ctx.query.run_id) state.runId = ctx.query.run_id;
     let runs;
     let reports;
+    let isolations;
     try {
-      [runs, reports] = await Promise.all([
+      [runs, reports, isolations] = await Promise.all([
         api.get('/api/lift-runs', { limit: 20 }),
         api.get('/api/lift-reports', {
           run_id: state.runId,
           status: state.status,
           band: state.band,
           q: state.q,
+          limit: 50,
+        }),
+        api.get('/api/lift-isolations', {
+          run_id: state.runId,
+          reason: state.reason,
           limit: 50,
         }),
       ]);
@@ -121,6 +177,15 @@ export const liftPage = {
       return;
     }
     const latest = runs.items[0];
+    const activeRun = state.runId ? runs.items.find((item) => String(item.id) === String(state.runId)) : latest;
+    // 对账区间与该批次的落库指标一致；未选批次时窗口口径同总览的「最近批次」。
+    const activeMetrics = (activeRun || {}).metrics || {};
+    const eventsTotal = activeMetrics.events ?? (activeRun || {}).event_count ?? 0;
+    const calculableCount = activeMetrics.eligible ?? (activeRun || {}).report_count ?? 0;
+    const isolatedCount = activeMetrics.isolated ?? 0;
+    const reasonCounts = activeMetrics.isolation_reasons || {};
+    const reasonTotal = ENUMS.isolationReasonOrder.reduce((sum, key) => sum + (reasonCounts[key] || 0), 0);
+    const balanced = eventsTotal === calculableCount + isolatedCount && reasonTotal === isolatedCount;
 
     view.innerHTML = `
       <section class="panel">
@@ -129,6 +194,7 @@ export const liftPage = {
           <div style="display:flex;gap:8px;align-items:center">
             <span class="meta">${fmtInt(runs.total)} 个批次</span>
             ${can(ctx.user.role, 'export:read') ? '<button class="btn sm ghost" id="export-reports">导出复盘 CSV</button>' : ''}
+            ${can(ctx.user.role, 'export:read') ? '<button class="btn sm ghost" id="export-isolations">导出隔离 CSV</button>' : ''}
             ${can(ctx.user.role, 'lift:create') ? '<button class="btn sm accent" id="new-run">发起测算</button>' : ''}
           </div>
         </div>
@@ -139,12 +205,37 @@ export const liftPage = {
             { key: 'status', label: '状态', render: (row) => `<span class="badge ${row.status === 'success' ? 'ok' : row.status === 'failed' ? 'danger' : 'warn'}">${esc(ENUMS.runStatus[row.status] || row.status)}</span>` },
             { key: 'trigger', label: '触发', render: (row) => esc(ENUMS.trigger[row.trigger] || row.trigger) },
             { key: 'event_count', label: '活动', className: 'num' },
+            { key: 'metrics', label: '可算', className: 'num', render: (row) => fmtInt((row.metrics || {}).eligible ?? row.report_count) },
+            { key: 'metrics', label: '隔离', className: 'num', render: (row) => fmtInt((row.metrics || {}).isolated ?? 0) },
             { key: 'report_count', label: '复盘', className: 'num' },
             { key: 'metrics', label: '平均弹性', className: 'num', render: (row) => fmtDec((row.metrics || {}).avg_elasticity, 2) },
             { key: 'metrics', label: '平均增量', className: 'num', render: (row) => fmtPct((row.metrics || {}).avg_lift_pct) },
             { key: 'started_at', label: '开始', render: (row) => `<span class="mono">${fmtTime(row.started_at)}</span>` },
           ],
         })}
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>可算性与对账 ${activeRun ? `<span class="mono muted">· ${esc(activeRun.run_no)}</span>` : ''}</h2>
+          <span class="meta">活动 = 可算 + 隔离</span>
+        </div>
+        <div class="panel-body">
+          <div class="recon-grid">
+            <div><div class="eyebrow">活动总数</div><p class="mono">${fmtInt(eventsTotal)}</p></div>
+            <div><div class="eyebrow">可算（进入计算）</div><p class="mono">${fmtInt(calculableCount)}</p></div>
+            <div><div class="eyebrow">隔离（保留原因）</div><p class="mono">${fmtInt(isolatedCount)}</p></div>
+            ${ENUMS.isolationReasonOrder
+              .map(
+                (key) =>
+                  `<div><div class="eyebrow">${esc(ENUMS.isolationReason[key] || key)}</div><p class="mono">${fmtInt(reasonCounts[key] || 0)}</p></div>`,
+              )
+              .join('')}
+            <div><div class="eyebrow">对账</div><p><span class="badge ${balanced ? 'ok' : 'danger'}">${balanced ? '一致' : '不一致'}</span></p></div>
+          </div>
+          <p class="mono muted" style="margin:10px 0 0">${esc((activeRun || latest || {}).log_text || '')}</p>
+          <p class="mono muted" style="margin:4px 0 0">总览均值只使用左侧「可算」活动；隔离原因只做归因，不参与平均。</p>
+        </div>
       </section>
 
       <section class="panel">
@@ -182,6 +273,46 @@ export const liftPage = {
           ],
           empty: { title: '这个筛选下没有复盘条目', hint: '清空筛选或先发起一次测算。' },
         })}
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>隔离清单 <span class="mono muted">· 不进入计算</span></h2>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="meta">${fmtInt(isolations.total)} 条</span>
+            ${state.reason ? '<button class="btn sm ghost" id="clear-reason">全部原因</button>' : ''}
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="filter-bar" id="isolation-filters">
+            ${field({
+              label: '隔离原因',
+              name: 'reason',
+              value: state.reason,
+              options: [
+                { value: '', label: '全部' },
+                ...ENUMS.isolationReasonOrder.map((key) => ({ value: key, label: ENUMS.isolationReason[key] })),
+              ],
+            })}
+            <div class="spacer"></div>
+            <span class="mono muted">缺日 / 对照不足 / 价格异常分别隔离，原因随批次保留可查</span>
+          </div>
+        </div>
+        ${table({
+          rows: isolations.items,
+          columns: [
+            { key: 'event_no', label: '事件', render: (row) => `<b class="mono">${esc(row.event_no)}</b><div class="sub">${esc(row.kind_label || '')}</div>` },
+            { key: 'sku_name', label: 'SKU', render: (row) => `<b>${esc(row.sku_code)}</b> ${esc(row.sku_name)}<div class="sub">${esc(row.channel_label || '')}</div>` },
+            { key: 'start_on', label: '窗口', className: 'num', render: (row) => `${esc(row.start_on || '—')} → ${esc(row.end_on || '—')}` },
+            { key: 'reason', label: '隔离原因', render: (row) => `<span class="badge ${reasonTone(row.reason)}">${esc(row.reason_label || ENUMS.isolationReason[row.reason] || row.reason)}</span>` },
+            { key: 'detail', label: '明细', render: (row) => `<span class="mono">${esc(isolationSummary(row.detail))}</span>` },
+            { key: 'note', label: '原因说明', render: (row) => `<span class="sub" style="white-space:normal">${esc(row.note || '—')}</span>` },
+          ],
+          empty: {
+            title: '本期没有隔离活动',
+            hint: '所有活动窗口都完整、对照充足且价格一致，全部进入计算。',
+          },
+        })}
       </section>`;
 
     const filters = view.querySelector('#report-filters');
@@ -196,6 +327,15 @@ export const liftPage = {
         liftPage.render(view, ctx);
       }
     });
+    const isolationFilters = view.querySelector('#isolation-filters');
+    isolationFilters?.addEventListener('change', () => {
+      state.reason = isolationFilters.querySelector('[name=reason]').value;
+      liftPage.render(view, ctx);
+    });
+    view.querySelector('#clear-reason')?.addEventListener('click', () => {
+      state.reason = '';
+      liftPage.render(view, ctx);
+    });
     view.querySelectorAll('section.panel table.data tbody tr').forEach((row) => {
       row.addEventListener('click', () => {
         const id = Number(row.dataset.id);
@@ -206,7 +346,12 @@ export const liftPage = {
           return;
         }
         const report = reports.items.find((item) => item.id === id);
-        if (report) openReport(view, ctx, report);
+        if (report) {
+          openReport(view, ctx, report);
+          return;
+        }
+        const isolation = isolations.items.find((item) => item.id === id);
+        if (isolation) openIsolation(isolation);
       });
     });
     view.querySelector('#new-run')?.addEventListener('click', async () => {
@@ -215,7 +360,10 @@ export const liftPage = {
       button.textContent = '测算中…';
       try {
         const run = await api.post('/api/lift-runs', { trigger: 'manual' });
-        toast(`批次 ${run.run_no} 完成：${run.report_count} 条复盘，亏损 ${(run.metrics || {}).loss_events} 场`);
+        const metrics = run.metrics || {};
+        toast(
+          `批次 ${run.run_no} 完成：活动 ${fmtInt(metrics.events)} 场 = 可算 ${fmtInt(metrics.eligible)} + 隔离 ${fmtInt(metrics.isolated)}，亏损 ${fmtInt(metrics.loss_events)} 场`,
+        );
         state.runId = String(run.id);
         await liftPage.render(view, ctx);
       } catch (err) {
@@ -232,6 +380,17 @@ export const liftPage = {
       try {
         await api.download(`/api/exports/reports.csv${state.runId ? `?run_id=${state.runId}` : ''}`, 'lift-reports.csv');
         toast('已开始下载复盘清单');
+      } catch (err) {
+        toast(errorMessage(err), 'err');
+      }
+    });
+    view.querySelector('#export-isolations')?.addEventListener('click', async () => {
+      try {
+        await api.download(
+          `/api/exports/isolations.csv${state.runId ? `?run_id=${state.runId}` : ''}`,
+          'lift-isolations.csv',
+        );
+        toast('已开始下载隔离清单');
       } catch (err) {
         toast(errorMessage(err), 'err');
       }

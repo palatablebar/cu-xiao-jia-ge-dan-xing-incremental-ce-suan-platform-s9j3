@@ -13,5 +13,16 @@ from src.models.price_event import PriceEvent  # noqa: E402
 from src.models.sales_daily import SalesDaily  # noqa: E402
 from src.models.lift_run import LiftRun  # noqa: E402
 from src.models.lift_report import LiftReport  # noqa: E402
+from src.models.lift_isolation import LiftIsolation  # noqa: E402
 
-__all__ = ["Base", "User", "AuditLog", "Sku", "PriceEvent", "SalesDaily", "LiftRun", "LiftReport"]
+__all__ = [
+    "Base",
+    "User",
+    "AuditLog",
+    "Sku",
+    "PriceEvent",
+    "SalesDaily",
+    "LiftRun",
+    "LiftReport",
+    "LiftIsolation",
+]

@@ -57,7 +57,7 @@ export const PERMISSIONS = {
   viewer: ['overview:read', 'sku:read', 'event:read', 'sales:read', 'lift:read'],
 };
 
-/** 共享枚举副本（后端 constants/enums.py）：渠道 / 玩法 / 批次状态 / 复盘状态 / ROI 分档。 */
+/** 共享枚举副本（后端 constants/enums.py）：渠道 / 玩法 / 批次状态 / 复盘状态 / ROI 分档 / 隔离原因。 */
 export const ENUMS = {
   channel: {
     hypermarket: '商超',
@@ -97,6 +97,13 @@ export const ENUMS = {
     ok: '已估计',
     unknown: '不可估计',
   },
+  isolationReason: {
+    missing_days: '缺日',
+    insufficient_controls: '对照不足',
+    price_anomaly: '价格异常',
+    not_calculable: '无法测算',
+  },
+  isolationReasonOrder: ['missing_days', 'insufficient_controls', 'price_anomaly', 'not_calculable'],
 };
 
 export function can(role, permission) {

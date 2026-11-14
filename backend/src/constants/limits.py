@@ -15,3 +15,9 @@ CONTROL_COUNT = 3
 PARALLEL_TREND_MAX_GAP = 0.1
 PRE_WINDOW_DAYS = 14
 MIN_POST_DAYS = 3
+
+# ---- 活动可算性校验 ----
+# 促销日成交价与活动促销价的相对偏差超过该阈值 → 价格异常
+PRICE_ANOMALY_TOLERANCE = 0.02
+# 对照 SKU 少于该数量即视为对照不足（README 固定同品类匹配 3 个）
+MIN_CONTROL_COUNT = CONTROL_COUNT

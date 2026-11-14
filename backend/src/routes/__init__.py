@@ -5,6 +5,7 @@ from src.routes.audit import router as audit_router
 from src.routes.auth import router as auth_router
 from src.routes.exports import router as exports_router
 from src.routes.health import router as health_router
+from src.routes.lift_isolations import router as lift_isolations_router
 from src.routes.lift_reports import router as lift_reports_router
 from src.routes.lift_runs import router as lift_runs_router
 from src.routes.overview import router as overview_router
@@ -21,5 +22,6 @@ api_router.include_router(price_events_router)
 api_router.include_router(sales_router)
 api_router.include_router(lift_runs_router)
 api_router.include_router(lift_reports_router)
+api_router.include_router(lift_isolations_router)
 api_router.include_router(exports_router)
 api_router.include_router(audit_router)

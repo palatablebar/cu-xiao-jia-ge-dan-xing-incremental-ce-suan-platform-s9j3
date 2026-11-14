@@ -82,6 +82,7 @@ def list_reports(
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
+    """复盘清单只含可算活动；隔离活动见 lift_isolation_service.list_isolations。"""
     stmt = select(LiftReport)
     count_stmt = select(func.count()).select_from(LiftReport)
     if run_id:

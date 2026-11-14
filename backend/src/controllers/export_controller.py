@@ -46,3 +46,23 @@ def runs_csv(db: Session, principal: dict, request: Request) -> Response:
         media_type="text/csv; charset=utf-8",
         headers=csv_response_headers("lift-runs.csv"),
     )
+
+
+def isolations_csv(db: Session, run_id: int | None, principal: dict, request: Request) -> Response:
+    content, count = export_service.isolations_csv(db, run_id)
+    audit_service.record(
+        db,
+        actor_email=principal["email"],
+        actor_role=principal["role"],
+        action="export.isolations",
+        entity="lift_isolation",
+        entity_id=run_id,
+        detail={"rows": count, "bytes": len(content)},
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers=csv_response_headers("lift-isolations.csv"),
+    )

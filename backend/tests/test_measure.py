@@ -32,7 +32,7 @@ def _catalog():
 def test_controls_come_from_same_category_and_skip_same_sku():
     catalog = _catalog()
     sales_index = {item["code"]: _index() for item in catalog}
-    matched = measure.match_controls(
+    matched, excluded = measure.match_controls(
         sku=catalog[0],
         category_skus=catalog,
         sales_index=sales_index,
@@ -51,7 +51,7 @@ def test_controls_with_overlapping_promo_are_excluded():
     catalog = _catalog()
     sales_index = {item["code"]: _index() for item in catalog}
     events_by_sku = {"A3": [{"start_on": date(2026, 8, 20), "end_on": date(2026, 8, 25)}]}
-    matched = measure.match_controls(
+    matched, excluded = measure.match_controls(
         sku=catalog[0],
         category_skus=catalog,
         sales_index=sales_index,
@@ -103,10 +103,9 @@ def test_measure_event_end_to_end_lift():
     assert result["control_skus"]["codes"]
 
 
-def test_measure_event_without_controls_is_unknown():
+def test_measure_event_without_controls_is_isolated():
     catalog = _catalog()[:1]
     sku = catalog[0]
-    sales_index = {"A2": _series([100.0] * 40, START - timedelta(days=10))}
     event = {
         "id": 1,
         "event_no": "PE-2601",
@@ -118,9 +117,19 @@ def test_measure_event_without_controls_is_unknown():
         "end_on": START + timedelta(days=16),
         "kind": "discount",
     }
+    treat = _series([100.0] * 40, START - timedelta(days=10))
+    for offset in range(7):
+        treat[event["start_on"] + timedelta(days=offset)] = {
+            "qty": 118,
+            "price": event["promo_price"],
+            "is_promo": True,
+        }
+    sales_index = {"A2": treat}
     result = measure.measure_event(
         event=event, sku=sku, category_skus=catalog, sales_index=sales_index, events_by_sku={}
     )
-    assert result["state"] == "unknown"
+    assert result["state"] == "isolated"
+    assert result["eligible"] is False
+    assert result["isolation_reason"] == "insufficient_controls"
     assert result["lift_pct"] is None
     assert "对照" in result["note"]

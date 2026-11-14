@@ -102,3 +102,17 @@ CREATE TABLE audit_logs (
     seed_key    VARCHAR(120) UNIQUE,
     created_at  TIMESTAMP    NOT NULL
 );
+
+CREATE TABLE lift_isolations (
+    id          SERIAL PRIMARY KEY,
+    run_id      INTEGER NOT NULL REFERENCES lift_runs(id) ON DELETE CASCADE,
+    event_id    INTEGER NOT NULL REFERENCES price_events(id) ON DELETE CASCADE,
+    sku_id      INTEGER NOT NULL REFERENCES skus(id) ON DELETE CASCADE,
+    reason      VARCHAR(24) NOT NULL,            -- 隔离原因 missing_days / insufficient_controls / price_anomaly / not_calculable
+    start_on    DATE,
+    end_on      DATE,
+    detail      JSON,                            -- 缺日明细 / 价格异常项 / 对照可用数
+    note        TEXT,
+    created_at  TIMESTAMP NOT NULL,
+    CONSTRAINT uq_lift_isolations_run_event UNIQUE (run_id, event_id)
+);

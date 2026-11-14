@@ -34,14 +34,27 @@ export const overviewPage = {
     const hero = data.hero || { points: [], windows: [] };
     const latest = data.latest_run;
     const lossCount = data.loss_total || 0;
+    const recon = data.reconciliation || {};
+    const reasons = data.isolation_reasons || [];
+    const eventsTotal = recon.events_total ?? null;
+    const calculableCount = recon.calculable_count ?? 0;
+    const isolatedCount = recon.isolated_count ?? 0;
 
     view.innerHTML = `
       ${ledger([
-        { label: '活动 / Events', value: fmtInt(data.events_total), unit: '场', hint: `覆盖 ${fmtInt(data.skus_total)} 个 SKU` },
+        {
+          label: '活动 / Events',
+          value: fmtInt(eventsTotal ?? data.events_total),
+          unit: '场',
+          hint:
+            eventsTotal === null || eventsTotal === undefined
+              ? `覆盖 ${fmtInt(data.skus_total)} 个 SKU`
+              : `= 可算 ${fmtInt(calculableCount)} + 隔离 ${fmtInt(isolatedCount)}`,
+        },
         {
           label: '平均弹性 / Elasticity',
           value: data.avg_elasticity === null ? '—' : fmtDec(data.avg_elasticity, 2),
-          hint: `已复盘 ${fmtInt(data.reports_total)} 条`,
+          hint: `仅可算活动 ${fmtInt(calculableCount)} 条`,
         },
         {
           label: '亏损活动 / ROI<1',
@@ -50,7 +63,12 @@ export const overviewPage = {
           hint: lossCount ? '折扣吃掉了毛利' : '本期没有亏损活动',
           bad: lossCount > 0,
         },
-        { label: '待复盘 / Pending', value: fmtInt(data.pending_total), unit: '条', hint: data.worker_alive ? '后台任务心跳正常' : '后台任务心跳超时' },
+        {
+          label: '隔离 / Isolated',
+          value: fmtInt(isolatedCount),
+          unit: '场',
+          hint: isolatedCount ? reasons.filter((item) => item.count).map((item) => `${item.label} ${item.count}`).join(' · ') : '窗口完整、对照充足',
+        },
       ])}
 
       <div class="grid-hero">
@@ -82,15 +100,42 @@ export const overviewPage = {
         <div style="display:grid;gap:14px;align-content:start">
           ${annotation({
             title: '本期批注',
-            children: lossCount
-              ? `有 <b>${lossCount}</b> 场活动的 ROI 低于 1：让利吃掉的毛利没有被增量补回来。先看 B6 有机奶与 C2 低温鲜奶，它们的折扣最深。`
-              : '全部活动的 ROI 都 ≥ 1，促销结构可以继续维持。',
+            children: `${recon.balanced === false ? '<b>对账不一致：</b>活动总数与「可算 + 隔离」不相等，先核数据。' : ''}${
+              lossCount
+                ? `有 <b>${lossCount}</b> 场活动的 ROI 低于 1：让利吃掉的毛利没有被增量补回来。先看 B6 有机奶与 C2 低温鲜奶，它们的折扣最深。`
+                : '全部活动的 ROI 都 ≥ 1，促销结构可以继续维持。'
+            }${
+              isolatedCount
+                ? `另有 <b>${isolatedCount}</b> 场因缺日 / 对照不足 / 价格异常被隔离，没有进入均值。`
+                : ''
+            }`,
             figures: [
               `平均弹性 ${data.avg_elasticity === null ? '—' : fmtDec(data.avg_elasticity, 2)}`,
               `平均增量 ${data.avg_lift_pct === null ? '—' : fmtPct(data.avg_lift_pct)}`,
               `平均 ROI ${fmtRoi(data.avg_roi)}`,
             ],
           })}
+
+          <section class="panel">
+            <div class="panel-head"><h2>可算性与隔离</h2><span class="meta">reconcile</span></div>
+            <div class="panel-body">
+              <div class="recon-grid">
+                <div><div class="eyebrow">活动总数</div><p class="mono">${eventsTotal === null ? '—' : fmtInt(eventsTotal)}</p></div>
+                <div><div class="eyebrow">可算（进入均值）</div><p class="mono">${fmtInt(calculableCount)}</p></div>
+                <div><div class="eyebrow">隔离（保留原因）</div><p class="mono">${fmtInt(isolatedCount)}</p></div>
+                <div><div class="eyebrow">对账</div><p><span class="badge ${recon.balanced === false ? 'danger' : 'ok'}">${recon.balanced === false ? '不一致' : '一致'}</span></p></div>
+              </div>
+              <div style="margin-top:10px;display:grid;gap:4px">
+                ${reasons
+                  .map(
+                    (item) =>
+                      `<div class="mono muted" style="display:flex;justify-content:space-between"><span>${esc(item.label)}</span><span>${fmtInt(item.count)}</span></div>`,
+                  )
+                  .join('')}
+              </div>
+              <p class="mono muted" style="margin:10px 0 0">隔离活动不进入平均弹性 / 增量 / ROI，也不会出现在亏损清单。</p>
+            </div>
+          </section>
 
           <section class="panel">
             <div class="panel-head"><h2>亏损活动</h2><span class="meta">roi &lt; 1</span></div>
@@ -146,9 +191,9 @@ export const overviewPage = {
                     <p class="mono muted" style="margin:2px 0 0">${fmtTime(latest.started_at)}</p>
                   </div>
                   <div>
-                    <div class="eyebrow">批次指标</div>
-                    <p style="margin:4px 0 0">活动 ${fmtInt((latest.metrics || {}).events)} 场 · 平均弹性 ${fmtDec((latest.metrics || {}).avg_elasticity, 2)}</p>
-                    <p class="mono muted" style="margin:2px 0 0">平均增量 ${fmtPct((latest.metrics || {}).avg_lift_pct)} · 平均 ROI ${fmtRoi((latest.metrics || {}).avg_roi)}</p>
+                    <div class="eyebrow">批次指标（仅可算活动）</div>
+                    <p style="margin:4px 0 0">活动 ${fmtInt((latest.metrics || {}).events)} 场 = 可算 ${fmtInt((latest.metrics || {}).eligible)} + 隔离 ${fmtInt((latest.metrics || {}).isolated)}</p>
+                    <p class="mono muted" style="margin:2px 0 0">平均弹性 ${fmtDec((latest.metrics || {}).avg_elasticity, 2)} · 平均增量 ${fmtPct((latest.metrics || {}).avg_lift_pct)} · 平均 ROI ${fmtRoi((latest.metrics || {}).avg_roi)}</p>
                   </div>
                   <div>
                     <div class="eyebrow">下一步</div>

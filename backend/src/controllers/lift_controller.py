@@ -12,9 +12,8 @@ def create_run(db: Session, payload: dict, principal: dict, request: Request) ->
         db,
         trigger=payload.get("trigger") or "manual",
         operator_email=principal["email"],
+        pre_days=payload.get("pre_days"),
     )
-    if payload.get("pre_days") and payload["pre_days"] != run.pre_days:
-        run.pre_days = int(payload["pre_days"])
     audit_service.record(
         db,
         actor_email=principal["email"],
@@ -22,7 +21,12 @@ def create_run(db: Session, payload: dict, principal: dict, request: Request) ->
         action="lift.create",
         entity="lift_run",
         entity_id=run.id,
-        detail={"run_no": run.run_no, "status": run.status, "reports": run.report_count},
+        detail={
+            "run_no": run.run_no,
+            "status": run.status,
+            "reports": run.report_count,
+            "isolated": (run.metrics or {}).get("isolated"),
+        },
         ip=request.client.host if request.client else None,
     )
     audit_service.record(
@@ -32,7 +36,12 @@ def create_run(db: Session, payload: dict, principal: dict, request: Request) ->
         action="lift.complete",
         entity="lift_run",
         entity_id=run.id,
-        detail={"status": run.status, "reports": run.report_count, "loss": (run.metrics or {}).get("loss_events")},
+        detail={
+            "status": run.status,
+            "reports": run.report_count,
+            "isolated": (run.metrics or {}).get("isolated"),
+            "loss": (run.metrics or {}).get("loss_events"),
+        },
         ip=request.client.host if request.client else None,
     )
     db.commit()

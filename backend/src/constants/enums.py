@@ -142,8 +142,41 @@ ELASTICITY_STATE_LABELS: dict[str, str] = {
 }
 
 
+class IsolationReason(StrEnum):
+    """活动不可算的原因：先核对窗口完整性，再判定可算性。
+
+    缺日 / 对照不足 / 价格异常三类分别隔离，互不混淆；
+    其余（活动前零销量、活动窗过短等）归入无法测算，同样保留原因说明。
+    """
+
+    MISSING_DAYS = "missing_days"
+    INSUFFICIENT_CONTROLS = "insufficient_controls"
+    PRICE_ANOMALY = "price_anomaly"
+    NOT_CALCULABLE = "not_calculable"
+
+
+ISOLATION_REASON_LABELS: dict[str, str] = {
+    IsolationReason.MISSING_DAYS.value: "缺日",
+    IsolationReason.INSUFFICIENT_CONTROLS.value: "对照不足",
+    IsolationReason.PRICE_ANOMALY.value: "价格异常",
+    IsolationReason.NOT_CALCULABLE.value: "无法测算",
+}
+
+ISOLATION_REASON_ORDER: list[str] = [
+    IsolationReason.MISSING_DAYS.value,
+    IsolationReason.INSUFFICIENT_CONTROLS.value,
+    IsolationReason.PRICE_ANOMALY.value,
+    IsolationReason.NOT_CALCULABLE.value,
+]
+
+
 def roi_band(roi: float | None) -> str:
-    """ROI 分档（None 视为亏损口径外的未知，按 loss 显示并附原因）。"""
+    """ROI 分档：≥1.2 增利、[1.0, 1.2) 打平、<1 亏损。
+
+    可算活动里 ROI 为 None 只有一种情况：增量 ≤ 0，让利没有换来增量，ROI 不计；
+    这类活动确实没跑赢让利，仍按亏损口径标记。
+    数据缺陷类活动不会走到这里，它们由 services/eligibility.py 隔离、不写复盘记录。
+    """
     if roi is None:
         return RoiBand.LOSS.value
     if roi >= 1.2:

@@ -28,3 +28,13 @@ def runs_csv(
     principal: dict = Depends(require_roles(*EXPORT_ROLES)),
 ):
     return export_controller.runs_csv(db, principal, request)
+
+
+@router.get("/isolations.csv")
+def isolations_csv(
+    request: Request,
+    run_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: dict = Depends(require_roles(*EXPORT_ROLES)),
+):
+    return export_controller.isolations_csv(db, run_id, principal, request)
